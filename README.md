@@ -38,8 +38,8 @@ Sin HeadsetControl, PowerPulse sigue mostrando todos los dispositivos reportados
 ## Instalación
 
 ```bash
-git clone <URL-del-repositorio>
-cd "PowerPulse Desklet"
+git clone https://github.com/vicman/PowerPulse.git
+cd PowerPulse
 chmod +x install.sh uninstall.sh
 ./install.sh
 ```
