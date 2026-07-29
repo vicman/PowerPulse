@@ -7,12 +7,12 @@ const GLib = imports.gi.GLib;
 const { BaseProvider } = require("./providers/baseProvider");
 const {
     createDevice,
-    mapUpowerType,
     mapUpowerState,
-    isTrackedType,
+    resolveUpowerType,
     iconForType,
     guessTransport,
     extractMac,
+    shouldIncludeUpowerDevice,
     DeviceType,
     DeviceState,
     Transport
@@ -202,10 +202,8 @@ class UpowerProvider extends BaseProvider {
         if (typeCode === null) {
             return null;
         }
-        const type = mapUpowerType(typeCode);
-        if (!isTrackedType(type)) {
-            return null;
-        }
+        // Prefer path prefix (speakers_/mouse_/keyboard_/…) for kind + icons.
+        const type = resolveUpowerType(typeCode, path);
 
         const model = this._readProp(proxy, "Model", "") || "";
         const vendor = this._readProp(proxy, "Vendor", "") || "";
@@ -234,12 +232,17 @@ class UpowerProvider extends BaseProvider {
         if (tte > 0) timeToEmpty = tte;
         if (ttf > 0) timeToFull = ttf;
 
-        if (type === DeviceType.BATTERY && !present && percentage === null) {
+        const hasPercentage = percentage !== null && percentage !== undefined && !isNaN(Number(percentage));
+
+        // Skip AC adapters and nodes without battery data. Any other UPower device
+        // that reports a percentage is shown — even unknown future kinds.
+        if (!shouldIncludeUpowerDevice(typeCode, type, hasPercentage, present, path)) {
             return null;
         }
 
         const state = mapUpowerState(stateCode);
-        const connected = present && percentage !== null && percentage !== undefined;
+        // Bluetooth peripherals often omit IsPresent while still publishing %.
+        const connected = hasPercentage && (present || type !== DeviceType.BATTERY);
         const nameParts = [vendor, model].filter(Boolean);
         let name = nameParts.join(" ").trim();
         if (!name) {

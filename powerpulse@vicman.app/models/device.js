@@ -9,6 +9,7 @@ const DeviceType = {
     KEYBOARD: "keyboard",
     MOUSE: "mouse",
     HEADSET: "headset",
+    SPEAKERS: "speakers",
     GAMING_INPUT: "gaming-input",
     PHONE: "phone",
     TABLET: "tablet",
@@ -58,19 +59,38 @@ const FRESHNESS = {
 };
 
 const UPOWER_TYPE_MAP = {
+    1: DeviceType.OTHER, // line-power — filtered out separately
     2: DeviceType.BATTERY,
     3: DeviceType.UPS,
+    4: DeviceType.OTHER, // monitor
     5: DeviceType.MOUSE,
     6: DeviceType.KEYBOARD,
+    7: DeviceType.OTHER, // pda
     8: DeviceType.PHONE,
+    9: DeviceType.OTHER, // media-player
     10: DeviceType.TABLET,
     11: DeviceType.COMPUTER,
     12: DeviceType.GAMING_INPUT,
     13: DeviceType.STYLUS,
     14: DeviceType.TOUCHPAD,
+    15: DeviceType.OTHER, // modem
+    16: DeviceType.OTHER, // network
     17: DeviceType.HEADSET,
-    19: DeviceType.HEADSET
+    18: DeviceType.SPEAKERS,
+    19: DeviceType.HEADSET,
+    20: DeviceType.OTHER, // video
+    21: DeviceType.SPEAKERS, // other-audio
+    22: DeviceType.OTHER, // remote-control
+    23: DeviceType.OTHER, // printer
+    24: DeviceType.OTHER, // scanner
+    25: DeviceType.OTHER, // camera
+    26: DeviceType.OTHER, // wearable
+    27: DeviceType.OTHER, // toy
+    28: DeviceType.OTHER  // bluetooth-generic
 };
+
+/** UPower line-power adapters never carry a battery percentage we care about. */
+const UPOWER_LINE_POWER = 1;
 
 const UPOWER_STATE_MAP = {
     0: DeviceState.UNKNOWN,
@@ -82,31 +102,41 @@ const UPOWER_STATE_MAP = {
     6: DeviceState.PENDING_DISCHARGE
 };
 
+/**
+ * Types we always consider battery-bearing when UPower exposes them.
+ * Unknown / unmapped codes still appear if they report a percentage.
+ */
 const TRACKED_TYPES = {
     [DeviceType.BATTERY]: true,
     [DeviceType.KEYBOARD]: true,
     [DeviceType.MOUSE]: true,
     [DeviceType.HEADSET]: true,
+    [DeviceType.SPEAKERS]: true,
     [DeviceType.GAMING_INPUT]: true,
     [DeviceType.PHONE]: true,
     [DeviceType.UPS]: true,
-    [DeviceType.STYLUS]: true
+    [DeviceType.STYLUS]: true,
+    [DeviceType.TABLET]: true,
+    [DeviceType.TOUCHPAD]: true,
+    [DeviceType.COMPUTER]: true,
+    [DeviceType.OTHER]: true
 };
 
 const TYPE_SORT_ORDER = {
     [DeviceType.BATTERY]: 0,
     [DeviceType.HEADSET]: 1,
-    [DeviceType.KEYBOARD]: 2,
-    [DeviceType.MOUSE]: 3,
-    [DeviceType.GAMING_INPUT]: 4,
-    [DeviceType.PHONE]: 5,
-    [DeviceType.UPS]: 6,
-    [DeviceType.STYLUS]: 7,
-    [DeviceType.TABLET]: 8,
-    [DeviceType.TOUCHPAD]: 9,
-    [DeviceType.COMPUTER]: 10,
-    [DeviceType.OTHER]: 11,
-    [DeviceType.UNKNOWN]: 12
+    [DeviceType.SPEAKERS]: 2,
+    [DeviceType.KEYBOARD]: 3,
+    [DeviceType.MOUSE]: 4,
+    [DeviceType.GAMING_INPUT]: 5,
+    [DeviceType.PHONE]: 6,
+    [DeviceType.UPS]: 7,
+    [DeviceType.STYLUS]: 8,
+    [DeviceType.TABLET]: 9,
+    [DeviceType.TOUCHPAD]: 10,
+    [DeviceType.COMPUTER]: 11,
+    [DeviceType.OTHER]: 12,
+    [DeviceType.UNKNOWN]: 13
 };
 
 function createDevice(partial) {
@@ -147,7 +177,10 @@ function createDevice(partial) {
 }
 
 function mapUpowerType(typeCode) {
-    return UPOWER_TYPE_MAP[typeCode] || DeviceType.OTHER;
+    if (UPOWER_TYPE_MAP[typeCode] !== undefined) {
+        return UPOWER_TYPE_MAP[typeCode];
+    }
+    return DeviceType.OTHER;
 }
 
 function mapUpowerState(stateCode) {
@@ -156,6 +189,126 @@ function mapUpowerState(stateCode) {
 
 function isTrackedType(type) {
     return !!TRACKED_TYPES[type];
+}
+
+/** True for AC adapters and similar non-battery UPower nodes. */
+function isUpowerLinePower(typeCode) {
+    return Number(typeCode) === UPOWER_LINE_POWER;
+}
+
+/**
+ * Infer device kind from the UPower object-path basename.
+ * Examples:
+ *   .../devices/speakers_dev_41_67_...  → speakers
+ *   .../devices/mouse_dev_CC_94_...     → mouse
+ *   .../devices/keyboard_dev_D2_5D_...  → keyboard
+ *   .../devices/battery_BAT0            → battery
+ */
+function inferTypeFromUpowerPath(objectPath) {
+    if (!objectPath) {
+        return null;
+    }
+    const base = String(objectPath).split("/").pop() || "";
+    if (!base || /^DisplayDevice$/i.test(base)) {
+        return null;
+    }
+    if (/^line_power_/i.test(base)) {
+        return null;
+    }
+
+    const rules = [
+        [/^battery_/i, DeviceType.BATTERY],
+        [/^keyboard_/i, DeviceType.KEYBOARD],
+        [/^mouse_/i, DeviceType.MOUSE],
+        [/^headset_/i, DeviceType.HEADSET],
+        [/^headphones_/i, DeviceType.HEADSET],
+        [/^speakers_/i, DeviceType.SPEAKERS],
+        [/^gaming_input_/i, DeviceType.GAMING_INPUT],
+        [/^phone_/i, DeviceType.PHONE],
+        [/^tablet_/i, DeviceType.TABLET],
+        [/^computer_/i, DeviceType.COMPUTER],
+        [/^touchpad_/i, DeviceType.TOUCHPAD],
+        [/^ups_/i, DeviceType.UPS],
+        [/^pen_/i, DeviceType.STYLUS],
+        [/^bluetooth_/i, DeviceType.OTHER],
+        [/^media_player_/i, DeviceType.OTHER],
+        [/^wearable_/i, DeviceType.OTHER],
+        [/^camera_/i, DeviceType.OTHER],
+        [/^remote_control_/i, DeviceType.OTHER]
+    ];
+
+    for (let i = 0; i < rules.length; i++) {
+        if (rules[i][0].test(base)) {
+            return rules[i][1];
+        }
+    }
+
+    // Future-proof: "<kind>_…" → try known DeviceType values / sensible aliases.
+    const kindMatch = base.match(/^([a-z][a-z0-9]*)_/i);
+    if (kindMatch) {
+        const kind = kindMatch[1].toLowerCase().replace(/-/g, "_");
+        const aliases = {
+            headphone: DeviceType.HEADSET,
+            headphones: DeviceType.HEADSET,
+            speaker: DeviceType.SPEAKERS,
+            gaminginput: DeviceType.GAMING_INPUT,
+            "gaming-input": DeviceType.GAMING_INPUT
+        };
+        if (aliases[kind]) {
+            return aliases[kind];
+        }
+        if (Object.values(DeviceType).indexOf(kind) !== -1) {
+            return kind;
+        }
+    }
+
+    return DeviceType.OTHER;
+}
+
+/**
+ * Resolve the best type: prefer a specific path-based kind when the D-Bus
+ * Type enum is missing/unknown/OTHER; otherwise keep the mapped enum type.
+ */
+function resolveUpowerType(typeCode, objectPath) {
+    const fromPath = inferTypeFromUpowerPath(objectPath);
+    const fromCode = mapUpowerType(typeCode);
+
+    if (fromPath && fromPath !== DeviceType.OTHER) {
+        // Path prefix is the most reliable UI hint (speakers_/mouse_/…).
+        return fromPath;
+    }
+    if (fromCode && fromCode !== DeviceType.OTHER) {
+        return fromCode;
+    }
+    return fromPath || fromCode || DeviceType.OTHER;
+}
+
+function isUpowerDisplayDevice(objectPath) {
+    return /\/DisplayDevice$/i.test(objectPath || "");
+}
+
+function isUpowerLinePowerPath(objectPath) {
+    return /\/line_power_/i.test(objectPath || "");
+}
+
+/**
+ * Decide whether a UPower node should appear in PowerPulse.
+ * Rule: show anything with a battery percentage (except AC / DisplayDevice).
+ */
+function shouldIncludeUpowerDevice(typeCode, type, hasPercentage, present, objectPath) {
+    if (isUpowerDisplayDevice(objectPath) || isUpowerLinePowerPath(objectPath)) {
+        return false;
+    }
+    if (isUpowerLinePower(typeCode)) {
+        return false;
+    }
+    if (hasPercentage) {
+        return true;
+    }
+    if (type === DeviceType.BATTERY && present) {
+        return true;
+    }
+    return false;
 }
 
 function levelClass(percentage, connected) {
@@ -189,12 +342,15 @@ function friendlyName(device, options) {
     }
     const opts = options || {};
 
+    // Only the system battery uses a configurable label instead of the OEM model.
     if (device.type === DeviceType.BATTERY) {
         const label = (opts.laptopName || "Laptop").toString().trim();
         return label || "Laptop";
     }
 
-    let name = device.name || device.model || "";
+    // Prefer UPower "model" for display. Unmapped kinds fall back here naturally
+    // (e.g. "HP Speaker 360") instead of a generic type label.
+    let name = (device.model || device.name || "").toString();
     name = name.replace(/\s+/g, " ").trim();
 
     const replacements = [
@@ -212,7 +368,7 @@ function friendlyName(device, options) {
     }
 
     if (!name) {
-        name = device.model || device.type || "Device";
+        name = device.name || device.type || "Device";
     }
     return name;
 }
@@ -227,6 +383,8 @@ function iconForType(type) {
             return "input-mouse-symbolic";
         case DeviceType.HEADSET:
             return "audio-headset-symbolic";
+        case DeviceType.SPEAKERS:
+            return "audio-speakers-symbolic";
         case DeviceType.GAMING_INPUT:
             return "input-gaming-symbolic";
         case DeviceType.PHONE:
@@ -458,5 +616,12 @@ module.exports = {
     sortDevices,
     guessTransport,
     extractMac,
-    buildStats
+    buildStats,
+    isUpowerLinePower,
+    shouldIncludeUpowerDevice,
+    inferTypeFromUpowerPath,
+    resolveUpowerType,
+    isUpowerDisplayDevice,
+    isUpowerLinePowerPath,
+    UPOWER_LINE_POWER
 };
