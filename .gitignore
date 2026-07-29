@@ -1,0 +1,26 @@
+# Byte-compiled / caches
+__pycache__/
+*.py[cod]
+*.mo
+*.gmo
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+*~
+*.swp
+*.swo
+.idea/
+.vscode/
+*.code-workspace
+
+# Local install leftover copies
+/powerpulse@vicman.app/*.bak
+
+# Logs / temp
+*.log
+.tmp/
+.temp/
+
+# Node (tests only)
+node_modules/
