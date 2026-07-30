@@ -1,7 +1,7 @@
 # PowerPulse Desklet — translation template
 msgid ""
 msgstr ""
-"Project-Id-Version: powerpulse@vicman.app 1.0.0\n"
+"Project-Id-Version: powerpulse@vicman.app 1.2.0\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-07-29 13:00-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
