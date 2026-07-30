@@ -118,6 +118,45 @@ console.log("clipboard summary shape");
     assert(text.indexOf("Actualizado:") !== -1, "has updated");
 }
 
+console.log("headset HC vs UPower dedupe");
+{
+    const offlineHc = {
+        id: "hc1",
+        source: "headsetcontrol",
+        type: "headset",
+        name: "Logitech G933 Gaming Wireless Headset",
+        model: "Logitech G933 Gaming Wireless Headset",
+        percentage: null,
+        connected: false
+    };
+    const buds = {
+        id: "up1",
+        source: "upower",
+        type: "headset",
+        name: "OnePlus Buds Pro 3",
+        model: "OnePlus Buds Pro 3",
+        percentage: 100,
+        connected: true
+    };
+    assert(!deviceModel.shouldSkipUpowerHeadset(buds, [offlineHc, buds]), "offline HC does not hide buds");
+
+    const liveHc = Object.assign({}, offlineHc, {
+        connected: true,
+        percentage: 63
+    });
+    const upowerSame = {
+        id: "up2",
+        source: "upower",
+        type: "headset",
+        name: "Logitech G933 Gaming Wireless Headset",
+        model: "Logitech G933 Gaming Wireless Headset",
+        percentage: 60,
+        connected: true
+    };
+    assert(deviceModel.shouldSkipUpowerHeadset(upowerSame, [liveHc, upowerSame]), "live HC hides matching UPower");
+    assert(!deviceModel.shouldSkipUpowerHeadset(buds, [liveHc, buds]), "live HC still keeps unrelated buds");
+}
+
 console.log("");
 console.log(`Result: ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
